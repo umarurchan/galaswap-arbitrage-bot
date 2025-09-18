@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/galaswap-arbitrage-bot/static/css/main.abaca010.css",
-    "main.js": "/galaswap-arbitrage-bot/static/js/main.856dba8a.js",
+    "main.js": "/galaswap-arbitrage-bot/static/js/main.360f91ed.js",
     "index.html": "/galaswap-arbitrage-bot/index.html",
     "main.abaca010.css.map": "/galaswap-arbitrage-bot/static/css/main.abaca010.css.map",
-    "main.856dba8a.js.map": "/galaswap-arbitrage-bot/static/js/main.856dba8a.js.map"
+    "main.360f91ed.js.map": "/galaswap-arbitrage-bot/static/js/main.360f91ed.js.map"
   },
   "entrypoints": [
     "static/css/main.abaca010.css",
-    "static/js/main.856dba8a.js"
+    "static/js/main.360f91ed.js"
   ]
 }
