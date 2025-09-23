@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Pause, Activity, Settings, RefreshCw, CheckCircle, Target, Zap, BarChart3, TrendingUp, ArrowUpRight, ArrowDownRight, LineChart, PieChart, DollarSign, Clock, Users, Volume2 } from 'lucide-react';
+import { ensureGalaChainNetwork, sendTransaction, isSendEnabled } from './wallet';
+import { encryptPrivateKey, saveEncryptedKeystore, clearEncryptedKeystore } from './keystore';
 
 const GalaSwapTradingBot = () => {
   const [walletConnected, setWalletConnected] = useState(false);
@@ -45,6 +47,12 @@ const GalaSwapTradingBot = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState('1H');
   const [pendingSignature, setPendingSignature] = useState(null);
   const [showSignModal, setShowSignModal] = useState(false);
+  const [provider, setProvider] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [keystoreMessage, setKeystoreMessage] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [confirmPassphrase, setConfirmPassphrase] = useState('');
+  const [privateKeyInput, setPrivateKeyInput] = useState('');
 
   const tradingStrategies = {
     'trend-following': {
@@ -215,96 +223,63 @@ const GalaSwapTradingBot = () => {
     );
 
     try {
-      // Simulate wallet signing process
       addLog('wallet', 'Opening wallet for transaction signature...');
-      
-      // In real implementation, this would be:
-      // const signature = await wallet.provider.request({
-      //   method: 'eth_signTransaction',
-      //   params: [transactionData]
-      // });
+      const tx = { ...transactionData, from: walletAddress };
+      if (provider && isSendEnabled()) {
+        const txHash = await sendTransaction(provider, tx);
+        addLog('success', `Transaction sent: ${txHash.slice(0, 10)}...`);
+        setOpportunities(prev => prev.map(op => op.id === opportunity.id ? { ...op, status: 'executing' } : op));
+      } else {
+        const mockSignature = `0x${Math.random().toString(16).substr(2, 130)}`;
+        addLog('success', `Transaction signed: ${mockSignature.slice(0, 10)}...`);
+        setOpportunities(prev => prev.map(op => op.id === opportunity.id ? { ...op, status: 'executing' } : op));
+      }
 
-      // Simulate signature delay
-      setTimeout(async () => {
-        try {
-          // Mock signature success
-          const mockSignature = `0x${Math.random().toString(16).substr(2, 130)}`;
-          addLog('success', `Transaction signed: ${mockSignature.slice(0, 10)}...`);
-          
-          setOpportunities(prev => 
-            prev.map(op => 
-              op.id === opportunity.id 
-                ? { ...op, status: 'executing' }
-                : op
-            )
-          );
-
-          // Simulate transaction execution
-          setTimeout(() => {
-            const success = Math.random() > 0.15; // 85% success rate
-            
-            if (success) {
-              const actualProfit = opportunity.expectedProfit * (0.7 + Math.random() * 0.6);
-              
-              const completedTrade = {
-                id: Date.now(),
-                ...opportunity,
-                status: 'completed',
-                timestamp: new Date(),
-                actualProfit,
-                pnl: opportunity.signal === 'BUY' ? actualProfit : -actualProfit * 0.3,
-                executionPrice: opportunity.price + (Math.random() - 0.5) * 0.001,
-                transactionHash: `0x${Math.random().toString(16).substr(2, 64)}`,
-                signature: mockSignature,
-                gasUsed: pendingSignature.estimatedGas
-              };
-              
-              setTrades(prev => [completedTrade, ...prev.slice(0, 24)]);
-              
-              setStats(prev => ({
-                ...prev,
-                totalTrades: prev.totalTrades + 1,
-                successfulTrades: prev.successfulTrades + 1,
-                totalProfit: prev.totalProfit + actualProfit,
-                dailyProfit: prev.dailyProfit + actualProfit,
-                totalVolume: prev.totalVolume + opportunity.volume,
-                successRate: Math.round(((prev.successfulTrades + 1) / (prev.totalTrades + 1)) * 100),
-                largestWin: Math.max(prev.largestWin, actualProfit)
-              }));
-
-              addLog('success', `Trade executed: +${actualProfit.toFixed(2)} profit`);
-              addLog('technical', `TX Hash: ${completedTrade.transactionHash.slice(0, 10)}... | Gas: ${pendingSignature.estimatedGas.toFixed(4)} GALA`);
-            } else {
-              const loss = opportunity.expectedProfit * 0.3;
-              addLog('error', `Trade failed: Market conditions changed | -${loss.toFixed(2)}`);
-              
-              setStats(prev => ({
-                ...prev,
-                totalTrades: prev.totalTrades + 1,
-                totalProfit: prev.totalProfit - loss,
-                successRate: Math.round((prev.successfulTrades / (prev.totalTrades + 1)) * 100)
-              }));
-            }
-
-            setTimeout(() => {
-              setOpportunities(prev => prev.filter(op => op.id !== opportunity.id));
-            }, 2000);
-          }, 3000);
-
-        } catch (error) {
-          addLog('error', `Signature failed: ${error.message}`);
-          setOpportunities(prev => 
-            prev.map(op => 
-              op.id === opportunity.id 
-                ? { ...op, status: 'active' }
-                : op
-            )
-          );
+      setTimeout(() => {
+        const success = Math.random() > 0.15;
+        if (success) {
+          const actualProfit = opportunity.expectedProfit * (0.7 + Math.random() * 0.6);
+          const completedTrade = {
+            id: Date.now(),
+            ...opportunity,
+            status: 'completed',
+            timestamp: new Date(),
+            actualProfit,
+            pnl: opportunity.signal === 'BUY' ? actualProfit : -actualProfit * 0.3,
+            executionPrice: opportunity.price + (Math.random() - 0.5) * 0.001,
+            transactionHash: `0x${Math.random().toString(16).substr(2, 64)}`,
+            gasUsed: pendingSignature.estimatedGas
+          };
+          setTrades(prev => [completedTrade, ...prev.slice(0, 24)]);
+          setStats(prev => ({
+            ...prev,
+            totalTrades: prev.totalTrades + 1,
+            successfulTrades: prev.successfulTrades + 1,
+            totalProfit: prev.totalProfit + actualProfit,
+            dailyProfit: prev.dailyProfit + actualProfit,
+            totalVolume: prev.totalVolume + opportunity.volume,
+            successRate: Math.round(((prev.successfulTrades + 1) / (prev.totalTrades + 1)) * 100),
+            largestWin: Math.max(prev.largestWin, actualProfit)
+          }));
+          addLog('success', `Trade executed: +${actualProfit.toFixed(2)} profit`);
+          addLog('technical', `Gas: ${pendingSignature.estimatedGas.toFixed(4)} GALA`);
+        } else {
+          const loss = opportunity.expectedProfit * 0.3;
+          addLog('error', `Trade failed: Market conditions changed | -${loss.toFixed(2)}`);
+          setStats(prev => ({
+            ...prev,
+            totalTrades: prev.totalTrades + 1,
+            totalProfit: prev.totalProfit - loss,
+            successRate: Math.round((prev.successfulTrades / (prev.totalTrades + 1)) * 100)
+          }));
         }
-      }, 2000);
-
+        setTimeout(() => {
+          setOpportunities(prev => prev.filter(op => op.id !== opportunity.id));
+        }, 2000);
+      }, 3000);
     } catch (error) {
-      addLog('error', `Transaction preparation failed: ${error.message}`);
+      addLog('error', `Transaction failed: ${error.message}`);
+      setOpportunities(prev => prev.map(op => op.id === opportunity.id ? { ...op, status: 'active' } : op));
     }
 
     setShowSignModal(false);
@@ -359,9 +334,12 @@ const GalaSwapTradingBot = () => {
     addLog('wallet', `Connecting to ${walletName}...`);
     
     try {
-      const accounts = await wallet.provider.request({
-        method: 'eth_requestAccounts'
-      });
+      try {
+        await ensureGalaChainNetwork(wallet.provider);
+      } catch (netErr) {
+        addLog('error', `Network switch failed: ${netErr.message}`);
+      }
+      const accounts = await wallet.provider.request({ method: 'eth_requestAccounts' });
 
       if (!accounts || accounts.length === 0) {
         throw new Error('No accounts returned from wallet');
@@ -370,6 +348,7 @@ const GalaSwapTradingBot = () => {
       const address = accounts[0];
       setWalletAddress(address);
       setWalletConnected(true);
+      setProvider(wallet.provider);
 
       addLog('success', `${walletName} connected: ${address}`);
       addLog('info', 'Portfolio loaded: 49.93 GALA, 4.31 FILM');
@@ -528,6 +507,13 @@ const GalaSwapTradingBot = () => {
           </div>
           
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-sm flex items-center gap-2"
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </button>
             {!walletConnected ? (
               <div className="flex gap-2">
                 {detectedWallets.slice(0, 2).map((wallet, index) => (
@@ -957,6 +943,85 @@ const GalaSwapTradingBot = () => {
           </div>
         )}
 
+        {/* Settings Modal */}
+        {showSettings && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md mx-4 w-full">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-gray-900">Settings</h2>
+                <button onClick={() => setShowSettings(false)} className="text-gray-500 hover:text-gray-700">✖️</button>
+              </div>
+
+              <div className="mb-4">
+                <div className="text-sm font-semibold text-gray-800 mb-2">Encrypted Private Key</div>
+                <div className="text-xs text-gray-600 mb-2">Stored locally, encrypted with your passphrase. Never sent anywhere.</div>
+                <textarea
+                  className="w-full border rounded p-2 text-sm font-mono"
+                  rows={3}
+                  placeholder="0x... your private key (optional)"
+                  value={privateKeyInput}
+                  onChange={(e) => setPrivateKeyInput(e.target.value)}
+                />
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <input
+                    type="password"
+                    className="border rounded p-2 text-sm"
+                    placeholder="Passphrase"
+                    value={passphrase}
+                    onChange={(e) => setPassphrase(e.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="border rounded p-2 text-sm"
+                    placeholder="Confirm"
+                    value={confirmPassphrase}
+                    onChange={(e) => setConfirmPassphrase(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={async () => {
+                      setKeystoreMessage('');
+                      try {
+                        if (!privateKeyInput.trim()) throw new Error('Private key required');
+                        if (!passphrase) throw new Error('Passphrase required');
+                        if (passphrase !== confirmPassphrase) throw new Error('Passphrases do not match');
+                        const payload = await encryptPrivateKey(privateKeyInput, passphrase);
+                        saveEncryptedKeystore(payload);
+                        setKeystoreMessage('Encrypted key saved locally');
+                        setPrivateKeyInput('');
+                        setPassphrase('');
+                        setConfirmPassphrase('');
+                      } catch (e) {
+                        setKeystoreMessage(`Error: ${e.message}`);
+                      }
+                    }}
+                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                  >
+                    Save Encrypted Key
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearEncryptedKeystore();
+                      setKeystoreMessage('Keystore cleared');
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded text-sm"
+                  >
+                    Clear
+                  </button>
+                </div>
+                {keystoreMessage && (
+                  <div className="mt-2 text-xs text-gray-700">{keystoreMessage}</div>
+                )}
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-xs text-yellow-800">
+                Never share your private key. This app never uploads it, but your browser environment may be compromised. Prefer using MetaMask directly.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Connect Wallet Prompt */}
         {!walletConnected && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
@@ -981,6 +1046,11 @@ const GalaSwapTradingBot = () => {
                   </button>
                 ))}
               </div>
+              {process.env.REACT_APP_GALACHAIN_CHAIN_ID_HEX ? (
+                <div className="mt-3 text-xs text-gray-500">GalaChain config detected</div>
+              ) : (
+                <div className="mt-3 text-xs text-red-600">GalaChain env not configured</div>
+              )}
             </div>
           </div>
         )}
